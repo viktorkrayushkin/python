@@ -1,0 +1,51 @@
+import numpy as np
+import pandas as pd
+from scipy.optimize import curve_fit
+import matplotlib.pyplot as plt
+
+# Функция Гаусса
+def gaussian(x, amp, cen, wid):
+    return amp * np.exp(-(x - cen) ** 2 / (2 * wid ** 2))
+
+# Чтение данных из CSV
+data = pd.read_csv('data.csv')
+x_data = data['x']
+y_data = data['y']
+
+# Предполагаем наличие нескольких пиков
+# Определяем суммарную функцию из нескольких гауссиан
+def multi_gaussian(x, *params):
+    y = np.zeros_like(x)
+    num_gaussians = int(len(params) / 3)
+    for i in range(num_gaussians):
+        amp = params[i * 3]
+        cen = params[i * 3 + 1]
+        wid = params[i * 3 + 2]
+        y += gaussian(x, amp, cen, wid)
+    return y
+
+# Начальные приближения параметров
+# Пример для двух гауссовых пиков
+initial_guess = [
+    max(y_data), x_data[np.argmax(y_data)], 1,    # Параметры первого пика
+    min(y_data), x_data[np.argmin(y_data)], 1     # Параметры второго пика
+]
+
+# Аппроксимация данных
+params, covariance = curve_fit(multi_gaussian, x_data, y_data, p0=initial_guess)
+
+# Количество гауссиан
+num_gaussians = int(len(params) / 3)
+
+# Вывод параметров пиков
+for i in range(num_gaussians):
+    amp = params[i * 3]
+    cen = params[i * 3 + 1]
+    wid = params[i * 3 + 2]
+    print(f'Пик {i + 1}: Амплитуда = {amp}, Положение = {cen}, Ширина = {wid}')
+
+# Построение графика
+plt.plot(x_data, y_data, label='Данные')
+plt.plot(x_data, multi_gaussian(x_data, *params), label='Аппроксимация')
+plt.legend()
+plt.show()

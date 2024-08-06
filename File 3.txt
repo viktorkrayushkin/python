@@ -1,0 +1,406 @@
+import numpy as np
+import pandas as pd
+from scipy.optimize import curve_fit
+import matplotlib.pyplot as plt
+
+# Считываем содержимое файла и заменяем '\t' на пробелы
+with open('ZnS_x2Se_y2.txt', 'r') as file:
+    data = file.read()
+
+# Заменяем строковые литералы '\t' на пробелы
+data = data.replace('\\t', ' ')
+
+# Сохраняем исправленные данные в новый файл
+with open('ZnS_x2Se_y2_clean.txt', 'w') as file:
+    file.write(data)
+
+# Чтение данных с правильным разделителем
+
+df = pd.read_csv('ZnS_x2Se_y2_clean.txt', sep='\s+', engine='python', names=['x', 'y', 'dy'])
+
+# Проверка данных
+print(df.head())
+print(df.columns)
+print(df.shape)
+
+# Удаление лишних символов из столбцов
+df['x'] = df['x'].astype(str).str.strip()
+df['y'] = df['y'].astype(str).str.strip()
+df['dy'] = df['dy'].astype(str).str.strip()
+
+# Преобразование данных в числовой формат
+df['x'] = pd.to_numeric(df['x'], errors='coerce')
+df['y'] = pd.to_numeric(df['y'], errors='coerce')
+df['dy'] = pd.to_numeric(df['dy'], errors='coerce')
+
+# Удаление строк с NaN
+df = df.dropna()
+
+# Проверка количества строк после удаления NaN
+print(f"Количество строк после обработки: {len(df)}")
+
+# Извлечение данных
+x_data = df['x'].values
+y_data = df['y'].values
+dy_data = df['dy'].values
+
+# Проверка на наличие данных
+if len(y_data) == 0:
+    print("После обработки данных y_data пуст. Проверьте формат исходного файла.")
+    exit()
+else:
+    print(f"Первые значения y_data: {y_data[:5]}")
+
+# Проверка наличия нулевых или отрицательных ошибок
+if np.any(dy_data <= 0):
+    print("Некоторые значения ошибок равны нулю или отрицательны. Они будут удалены из данных.")
+    # Удаляем эти значения из данных
+    mask = dy_data > 0
+    x_data = x_data[mask]
+    y_data = y_data[mask]
+    dy_data = dy_data[mask]
+
+
+# Шаг 1: Чтение и обработка данных (без изменений)
+
+# (Ваш существующий код чтения данных)
+
+import pandas as pd
+import numpy as np
+from scipy.optimize import curve_fit
+from scipy.signal import find_peaks
+import matplotlib.pyplot as plt
+
+# Предполагается, что данные уже загружены:
+# x_data, y_data, dy_data
+
+# Параметры для настройки размера и цвета точек
+marker_size = 8          # Размер маркера
+marker_color = 'blue'    # Цвет заливки маркера
+edge_color = 'black'     # Цвет края маркера
+errorbar_color = 'gray'  # Цвет баров погрешности
+
+# Шаг 1: Поиск пиков в данных
+# Устанавливаем высоту пиков, которую считаем значимой (может потребовать настройки)
+peak_indices, _ = find_peaks(y_data, height=np.mean(y_data))
+
+# Выводим найденные пики
+print(f"Найдено {len(peak_indices)} пиков на позициях: {x_data[peak_indices]}")
+
+# Шаг 2 и 3: Аппроксимация каждого пика отдельно
+def gaussian(x, amp, cen, wid):
+    return amp * np.exp(-((x - cen) ** 2) / (2 * wid ** 2))
+
+plt.figure(figsize=(12, 8))
+
+# Используем обновленные параметры для настройки маркеров
+
+
+x_fit = np.linspace(min(x_data), max(x_data), 1000)
+total_fit = np.zeros_like(x_fit)
+
+# Добавим список для сохранения параметров каждого пика
+peak_params_list = []
+
+for i, peak_index in enumerate(peak_indices):
+    # Определяем диапазон данных вокруг пика
+    left = peak_index - 5 if peak_index - 5 >= 0 else 0
+    right = peak_index + 6 if peak_index + 6 <= len(x_data) else len(x_data)
+    
+    x_peak = x_data[left:right]
+    y_peak = y_data[left:right]
+    dy_peak = dy_data[left:right]
+    
+    # Начальные приближения для данного пика
+    amp_guess = y_data[peak_index]
+    cen_guess = x_data[peak_index]
+    wid_guess = (max(x_peak) - min(x_peak)) / 2
+    
+    initial_guess = [amp_guess, cen_guess, wid_guess]
+    
+    # Ограничения на параметры
+    bounds=(
+        [0, min(x_peak), 0],
+        [np.inf, max(x_peak), np.inf]
+    )
+    
+    # Аппроксимация
+    try:
+        params, covariance = curve_fit(
+            gaussian, x_peak, y_peak, p0=initial_guess, sigma=dy_peak, absolute_sigma=True,
+            bounds=bounds
+        )
+    except RuntimeError as e:
+        print(f"Не удалось аппроксимировать пик на позиции {cen_guess}: {e}")
+        continue
+    
+    amp, cen, wid = params
+    print(f'Пик {i+1}: Амплитуда = {amp:.2f}, Центр = {cen:.2f}, Ширина = {wid:.2f}')
+    
+    # Сохраняем параметры пика
+    peak_params_list.append((amp, cen, wid))
+    
+    # Добавляем аппроксимацию данного пика на общий график
+    y_fit = gaussian(x_fit, *params)
+    total_fit += y_fit  # Если хотим получить сумму всех гауссиан
+    
+    # Генерируем уникальный цвет для каждого пика
+    peak_color = plt.cm.viridis(i / len(peak_indices))
+    
+    plt.plot(x_fit, y_fit, label=f'Аппроксимация пика {i+1}', color=peak_color)
+    
+    # Вы можете отключить аннотации отдельных пиков, если они не нужны
+    """
+    # Добавляем аннотацию с параметрами пика на график
+    plt.annotate(
+        f'Пик {i+1}nАмплитуда: {amp:.2f}nЦентр: {cen:.2f}nШирина: {wid:.2f}',
+        xy=(cen, amp), xycoords='data',
+        xytext=(0, 30), textcoords='offset points',
+        arrowprops=dict(arrowstyle='->', color=peak_color),
+        color=peak_color,
+        fontsize=10,
+        ha='center'
+    )
+    """
+    
+plt.legend()
+plt.xlabel('x')
+plt.ylabel('y')
+plt.title('Аппроксимация каждого отдельного пика гауссианой')
+plt.grid(True)
+plt.show()
+
+# Если хотите увидеть сумму всех аппроксимаций вместе с данными:
+plt.figure(figsize=(12, 8))
+
+plt.plot(x_fit, total_fit, 'r-', label='ZnS_x2Se_y2', linewidth=2)
+
+# Находим пики в суммарной аппроксимации
+summed_peak_indices, _ = find_peaks(total_fit, height=np.mean(total_fit))
+
+# Добавляем аннотации только для суммарных пиков
+for i, peak_index in enumerate(summed_peak_indices):
+    cen = x_fit[peak_index]
+    amp = total_fit[peak_index]
+    
+    plt.annotate(
+        f'Пик {i+1}nЦентр: {cen:.2f}',
+        xy=(cen, amp), xycoords='data',
+        xytext=(0, 30), textcoords='offset points',
+        arrowprops=dict(arrowstyle='->', color='black'),
+        color='black',
+        fontsize=10,
+        ha='center'
+    )
+
+plt.legend()
+plt.xlabel('2Θ')
+plt.ylabel('Rate')
+plt.title('Суммарная аппроксимация всех пиков')
+plt.grid(True)
+plt.show()
+
+
+import numpy as np
+import pandas as pd
+from scipy.optimize import curve_fit
+import matplotlib.pyplot as plt
+
+# Считываем содержимое файла и заменяем '\t' на пробелы
+with open('ZnS_x2Se_y2.txt', 'r') as file:
+    data = file.read()
+
+# Заменяем строковые литералы '\t' на пробелы
+data = data.replace('\\t', ' ')
+
+# Сохраняем исправленные данные в новый файл
+with open('ZnS_x2Se_y2_clean.txt', 'w') as file:
+    file.write(data)
+
+# Чтение данных с правильным разделителем
+
+df = pd.read_csv('ZnS_x2Se_y2_clean.txt', sep='\s+', engine='python', names=['x', 'y', 'dy'])
+
+# Проверка данных
+print(df.head())
+print(df.columns)
+print(df.shape)
+
+# Удаление лишних символов из столбцов
+df['x'] = df['x'].astype(str).str.strip()
+df['y'] = df['y'].astype(str).str.strip()
+df['dy'] = df['dy'].astype(str).str.strip()
+
+# Преобразование данных в числовой формат
+df['x'] = pd.to_numeric(df['x'], errors='coerce')
+df['y'] = pd.to_numeric(df['y'], errors='coerce')
+df['dy'] = pd.to_numeric(df['dy'], errors='coerce')
+
+# Удаление строк с NaN
+df = df.dropna()
+
+# Проверка количества строк после удаления NaN
+print(f"Количество строк после обработки: {len(df)}")
+
+# Извлечение данных
+x_data = df['x'].values
+y_data = df['y'].values
+dy_data = df['dy'].values
+
+# Проверка на наличие данных
+if len(y_data) == 0:
+    print("После обработки данных y_data пуст. Проверьте формат исходного файла.")
+    exit()
+else:
+    print(f"Первые значения y_data: {y_data[:5]}")
+
+# Проверка наличия нулевых или отрицательных ошибок
+if np.any(dy_data <= 0):
+    print("Некоторые значения ошибок равны нулю или отрицательны. Они будут удалены из данных.")
+    # Удаляем эти значения из данных
+    mask = dy_data > 0
+    x_data = x_data[mask]
+    y_data = y_data[mask]
+    dy_data = dy_data[mask]
+
+
+# Шаг 1: Чтение и обработка данных (без изменений)
+
+# (Ваш существующий код чтения данных)
+
+import pandas as pd
+import numpy as np
+from scipy.optimize import curve_fit
+from scipy.signal import find_peaks
+import matplotlib.pyplot as plt
+
+# Предполагается, что данные уже загружены:
+# x_data, y_data, dy_data
+
+# Параметры для настройки размера и цвета точек
+marker_size = 8          # Размер маркера
+marker_color = 'blue'    # Цвет заливки маркера
+edge_color = 'black'     # Цвет края маркера
+errorbar_color = 'gray'  # Цвет баров погрешности
+
+# Шаг 1: Поиск пиков в данных
+# Устанавливаем высоту пиков, которую считаем значимой (может потребовать настройки)
+peak_indices, _ = find_peaks(y_data, height=np.mean(y_data))
+
+# Выводим найденные пики
+print(f"Найдено {len(peak_indices)} пиков на позициях: {x_data[peak_indices]}")
+
+# Шаг 2 и 3: Аппроксимация каждого пика отдельно
+def gaussian(x, amp, cen, wid):
+    return amp * np.exp(-((x - cen) ** 2) / (2 * wid ** 2))
+
+plt.figure(figsize=(12, 8))
+
+# Используем обновленные параметры для настройки маркеров
+
+
+x_fit = np.linspace(min(x_data), max(x_data), 1000)
+total_fit = np.zeros_like(x_fit)
+
+# Добавим список для сохранения параметров каждого пика
+peak_params_list = []
+
+for i, peak_index in enumerate(peak_indices):
+    # Определяем диапазон данных вокруг пика
+    left = peak_index - 5 if peak_index - 5 >= 0 else 0
+    right = peak_index + 6 if peak_index + 6 <= len(x_data) else len(x_data)
+    
+    x_peak = x_data[left:right]
+    y_peak = y_data[left:right]
+    dy_peak = dy_data[left:right]
+    
+    # Начальные приближения для данного пика
+    amp_guess = y_data[peak_index]
+    cen_guess = x_data[peak_index]
+    wid_guess = (max(x_peak) - min(x_peak)) / 2
+    
+    initial_guess = [amp_guess, cen_guess, wid_guess]
+    
+    # Ограничения на параметры
+    bounds=(
+        [0, min(x_peak), 0],
+        [np.inf, max(x_peak), np.inf]
+    )
+    
+    # Аппроксимация
+    try:
+        params, covariance = curve_fit(
+            gaussian, x_peak, y_peak, p0=initial_guess, sigma=dy_peak, absolute_sigma=True,
+            bounds=bounds
+        )
+    except RuntimeError as e:
+        print(f"Не удалось аппроксимировать пик на позиции {cen_guess}: {e}")
+        continue
+    
+    amp, cen, wid = params
+    print(f'Пик {i+1}: Амплитуда = {amp:.2f}, Центр = {cen:.2f}, Ширина = {wid:.2f}')
+    
+    # Сохраняем параметры пика
+    peak_params_list.append((amp, cen, wid))
+    
+    # Добавляем аппроксимацию данного пика на общий график
+    y_fit = gaussian(x_fit, *params)
+    total_fit += y_fit  # Если хотим получить сумму всех гауссиан
+    
+    # Генерируем уникальный цвет для каждого пика
+    peak_color = plt.cm.viridis(i / len(peak_indices))
+    
+    plt.plot(x_fit, y_fit, label=f'Аппроксимация пика {i+1}', color=peak_color)
+    
+    # Вы можете отключить аннотации отдельных пиков, если они не нужны
+    """
+    # Добавляем аннотацию с параметрами пика на график
+    plt.annotate(
+        f'Пик {i+1}nАмплитуда: {amp:.2f}nЦентр: {cen:.2f}nШирина: {wid:.2f}',
+        xy=(cen, amp), xycoords='data',
+        xytext=(0, 30), textcoords='offset points',
+        arrowprops=dict(arrowstyle='->', color=peak_color),
+        color=peak_color,
+        fontsize=10,
+        ha='center'
+    )
+    """
+    
+plt.legend()
+plt.xlabel('x')
+plt.ylabel('y')
+plt.title('Аппроксимация каждого отдельного пика гауссианой')
+plt.grid(True)
+plt.show()
+
+# Если хотите увидеть сумму всех аппроксимаций вместе с данными:
+plt.figure(figsize=(12, 8))
+
+plt.plot(x_fit, total_fit, 'r-', label='ZnS_x2Se_y2', linewidth=2)
+
+# Находим пики в суммарной аппроксимации
+summed_peak_indices, _ = find_peaks(total_fit, height=np.mean(total_fit))
+
+# Добавляем аннотации только для суммарных пиков
+for i, peak_index in enumerate(summed_peak_indices):
+    cen = x_fit[peak_index]
+    amp = total_fit[peak_index]
+    
+    plt.annotate(
+        f'Пик {i+1}nЦентр: {cen:.2f}',
+        xy=(cen, amp), xycoords='data',
+        xytext=(0, 30), textcoords='offset points',
+        arrowprops=dict(arrowstyle='->', color='black'),
+        color='black',
+        fontsize=10,
+        ha='center'
+    )
+
+plt.legend()
+plt.xlabel('2Θ')
+plt.ylabel('Rate')
+plt.title('Суммарная аппроксимация всех пиков')
+plt.grid(True)
+plt.show()
+
+
